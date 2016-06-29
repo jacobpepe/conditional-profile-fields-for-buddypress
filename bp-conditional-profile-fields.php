@@ -75,6 +75,9 @@ class Devb_Conditional_Xprofile_Field_Helper {
 		//inject the conditions as javascript object 
 		add_action( 'wp_head', array( $this, 'to_js_objects' ), 100 );
 		
+		//When the user account is submitted for registration, check that the required fields are filled in
+		add_action( 'bp_signup_pre_validate', array( $this, 'validate_conditional_fields' ) );
+
 		//when the user account is activated, do not save the fields trigerred by the condition
 		add_action( 'bp_core_activated_user', array( $this, 'update_saved_fields' ) );
 		
@@ -271,6 +274,76 @@ class Devb_Conditional_Xprofile_Field_Helper {
 		return $related_field;
 	}
 
+
+
+	/**
+	 * Stolen from bp-xprofile-functions.php
+	 * Edited the apply_filters call because it was returning 'Citizen Teacher' instead of citizen-teacher
+	 *
+	 * Fetches profile data for a specific field for the user.
+	 *
+	 * When the field value is serialized, this function unserializes and filters
+	 * each item in the array.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param mixed  $field        The ID of the field, or the $name of the field.
+	 * @param int    $user_id      The ID of the user.
+	 * @param string $multi_format How should array data be returned? 'comma' if you want a
+	 *                             comma-separated string; 'array' if you want an array.
+	 * @return mixed The profile field data.
+	 */
+	function conditional_xprofile_get_field_data( $field, $user_id = 0, $multi_format = 'array' ) {
+
+		if ( empty( $user_id ) ) {
+			$user_id = bp_displayed_user_id();
+		}
+
+		if ( empty( $user_id ) ) {
+			return false;
+		}
+
+		if ( is_numeric( $field ) ) {
+			$field_id = $field;
+		} else {
+			$field_id = xprofile_get_field_id_from_name( $field );
+		}
+
+		if ( empty( $field_id ) ) {
+			return false;
+		}
+
+		$values = maybe_unserialize( BP_XProfile_ProfileData::get_value_byid( $field_id, $user_id ) );
+
+		if ( is_array( $values ) ) {
+			$data = array();
+			foreach( (array) $values as $value ) {
+
+				/**
+				 * Filters the field data value for a specific field for the user.
+				 *
+				 * @since 1.0.0
+				 *
+				 * @param string $value    Value saved for the field.
+				 * @param int    $field_id ID of the field being displayed.
+				 * @param int    $user_id  ID of the user being displayed.
+				 */
+				$data[] = apply_filters( 'xprofile_get_field_data', $value, $field_id, $user_id );
+			}
+
+			if ( 'comma' == $multi_format ) {
+				$data = implode( ', ', $data );
+			}
+		} else {
+			/** This filter is documented in bp-xprofile/bp-xprofile-functions.php */
+			//$data = apply_filters( 'xprofile_get_field_data', $values, $field_id, $user_id );
+			$data = $values;
+		}
+
+		return $data;
+	}
+
+
 	/**
 	 * Delete the fields on new user activation/profile update that do not conform to our condition
 	 * and yes, I am the boss here, don' ask me the logic :P
@@ -291,7 +364,7 @@ class Devb_Conditional_Xprofile_Field_Helper {
 			//for each field triggering the condition, get the field data for this field
 			$conditional_field_id = (int)str_replace('field_', '', $conditional_field_id );
 			
-			$data = xprofile_get_field_data( $conditional_field_id, $user_id );
+			$data = $this->conditional_xprofile_get_field_data( $conditional_field_id, $user_id );
 			
 			//find all the conditions which are based on the vale of this field
 			foreach( $related_fields['conditions'] as $condition ) {
@@ -322,6 +395,40 @@ class Devb_Conditional_Xprofile_Field_Helper {
 		
 	}
 	
+	//On Hold, too complicated for me right now
+	public function validate_conditional_fields() {
+
+		//Check the profile information
+		if ( bp_is_active( 'xprofile' ) ) {
+			
+			// Make sure hidden field is passed and populated.
+			if ( isset( $_POST['signup_profile_field_ids'] ) && !empty( $_POST['signup_profile_field_ids'] ) ) {
+
+				// Let's compact any profile field info into an array.
+				$profile_field_ids = explode( ',', $_POST['signup_profile_field_ids'] );
+
+				//build all conditions array
+				$this->build_conditions();
+
+				//get the fields whose value triggers conditions
+				$conditional_fields = $this->conditional_fields;
+		
+				//Now, There can be multiple conditional fields
+				foreach ( $conditional_fields as $conditional_field_id => $related_fields ) {
+
+					if ( isset( $_POST[$conditional_field_id] ) ) {
+
+						foreach ( $related_fields['conditions'] as $condition ) {
+							
+
+						}
+					}
+				}
+			}
+		}
+
+	}
+
 	/**
 	 * Check if given the value, conditional value and operator, if there is a match?
 	 * 
